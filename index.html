@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DarkCenter Cloud User Main</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        'custom-blue': '#0000FF'
+      }
+    }
+  }
+}
+</script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #0F0F0F;
+  margin: 0;
+  user-select: none;
+}
+
+.content-container { max-width: 960px; margin: 0 auto; }
+
+.bottom-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.5);
+  opacity: 0;
+  visibility: hidden;
+  transition: .3s;
+  z-index: 40;
+}
+.bottom-sheet-overlay.active { opacity: 1; visibility: visible; }
+
+.bottom-sheet {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  max-width: 480px;
+  margin: auto;
+  background: #212121;
+  border-radius: 24px 24px 0 0;
+  transform: translateY(100%);
+  transition: .3s cubic-bezier(.4,0,.2,1);
+  z-index: 50;
+}
+.bottom-sheet.active { transform: translateY(0); }
+
+@keyframes slideIn {
+  from { transform: translateY(-100%); opacity: 0 }
+  to { transform: translateY(0); opacity: 1 }
+}
+@keyframes fadeOut {
+  from { opacity: 1 }
+  to { opacity: 0 }
+}
+.toast-enter { animation: slideIn .4s forwards }
+.toast-leave { animation: fadeOut .3s forwards }
+</style>
+</head>
+
+<body class="text-white min-h-screen">
+
+<div id="toast-container"
+ class="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-3 max-w-sm w-full px-4">
+</div>
+
+<header class="bg-neutral-800/70 backdrop-blur-md px-4 py-6 rounded-b-3xl border-b border-neutral-700/50">
+<div class="content-container">
+
+<p id="status-text" class="text-xl font-bold mb-2">
+Нет подтверждённых слотов
+</p>
+
+<p class="text-gray-400">Иванов Иван</p>
+<p class="text-gray-400 mb-4">+7 999 888-77-66</p>
+
+<div class="flex gap-3 h-[52px]">
+
+<button id="close-slot-btn"
+ onclick="showStopSlotConfirmation()"
+ class="hidden w-[52px] border-2 border-custom-blue rounded-xl flex items-center justify-center">
+<svg class="w-6 h-6 text-custom-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+<path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+</svg>
+</button>
+
+<button id="main-action-btn"
+ onclick="toggleSlot()"
+ class="flex-1 bg-custom-blue rounded-xl font-semibold flex items-center justify-center gap-2">
+<span id="main-btn-text">Начать слот</span>
+<svg id="main-btn-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+<path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+</svg>
+</button>
+
+</div>
+</div>
+</header>
+
+<!-- Bottom Sheet -->
+<div id="bottom-sheet-overlay" class="bottom-sheet-overlay"></div>
+<div id="bottom-sheet" class="bottom-sheet p-4">
+<h2 id="bsTitle" class="text-xl font-bold mb-2"></h2>
+<p id="bsSubtitle" class="text-gray-400 mb-6"></p>
+
+<button id="bsConfirmBtn" class="w-full py-3 rounded-xl mb-3"></button>
+<button id="bsCancelBtn" onclick="hideBottomSheet()" class="w-full py-3 border-2 border-custom-blue rounded-xl text-custom-blue">
+Отмена
+</button>
+</div>
+
+<script>
+// ================= CONFIG =================
+const API_URL = "https://script.google.com/macros/s/AKfycbwBMXEjxU0m2XKU73h1xHPQNrRJMDPjjpLrsRL3lrtadESDIuWtn1bJvyUBSwLruNamKw/exec";
+const USER_DATA = {
+  user_id: "dc_001",
+  user_name: "Иванов Иван",
+  phone: "+79998887766",
+  source: "web"
+};
+
+// ================= STATE =================
+let isSlotActive = false;
+
+// ================= DOM =================
+const statusText = document.getElementById("status-text");
+const mainBtnText = document.getElementById("main-btn-text");
+const mainBtnIcon = document.getElementById("main-btn-icon").querySelector("path");
+const closeSlotBtn = document.getElementById("close-slot-btn");
+
+const bottomSheet = document.getElementById("bottom-sheet");
+const overlay = document.getElementById("bottom-sheet-overlay");
+const bsTitle = document.getElementById("bsTitle");
+const bsSubtitle = document.getElementById("bsSubtitle");
+const bsConfirmBtn = document.getElementById("bsConfirmBtn");
+
+const lightning = "M13 10V3L4 14h7v7l9-11h-7z";
+const arrow = "M9 5l7 7-7 7";
+
+// ================= TOAST =================
+function showToast(text) {
+  const t = document.createElement("div");
+  t.className = "toast-enter bg-white text-black px-4 py-3 rounded-xl shadow";
+  t.innerText = text;
+  document.getElementById("toast-container").appendChild(t);
+  setTimeout(() => {
+    t.classList.replace("toast-enter","toast-leave");
+    t.addEventListener("animationend",()=>t.remove());
+  },3000);
+}
+
+// ================= API =================
+async function sendSlotStatus(status) {
+  try {
+    const r = await fetch(API_URL,{
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({...USER_DATA,status})
+    });
+    const j = await r.json();
+    if(!j.success) throw new Error(j.error);
+    return true;
+  } catch(e) {
+    showToast("Ошибка синхронизации слота");
+    return false;
+  }
+}
+
+// ================= LOGIC =================
+function toggleSlot() {
+  if(isSlotActive) return;
+
+  sendSlotStatus("Open").then(ok=>{
+    if(!ok) return;
+    isSlotActive = true;
+    const t = new Date().toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});
+    statusText.innerText = `Слот открыт в ${t}`;
+    mainBtnText.innerText = "Перейти к задачам";
+    mainBtnIcon.setAttribute("d",arrow);
+    closeSlotBtn.classList.remove("hidden");
+    showToast(`Слот открыт в ${t}`);
+  });
+}
+
+function showStopSlotConfirmation() {
+  bsTitle.innerText = "Завершить слот?";
+  bsSubtitle.innerText = "При закрытии выполнять задачи нельзя";
+  bsConfirmBtn.innerText = "Завершить";
+  bsConfirmBtn.className = "w-full py-3 bg-custom-blue rounded-xl";
+  bsConfirmBtn.onclick = resetSlotState;
+  overlay.classList.add("active");
+  bottomSheet.classList.add("active");
+}
+
+function hideBottomSheet() {
+  overlay.classList.remove("active");
+  bottomSheet.classList.remove("active");
+}
+
+function resetSlotState() {
+  hideBottomSheet();
+  sendSlotStatus("Closed").then(ok=>{
+    if(!ok) return;
+    isSlotActive = false;
+    statusText.innerText = "Нет подтверждённых слотов";
+    mainBtnText.innerText = "Начать слот";
+    mainBtnIcon.setAttribute("d",lightning);
+    closeSlotBtn.classList.add("hidden");
+    showToast("Слот закрыт");
+  });
+}
+</script>
+</body>
+</html>
